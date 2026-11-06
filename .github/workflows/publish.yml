@@ -1,0 +1,69 @@
+# Publishes a signed Kingdom 685 APK as this repo's latest Release, under its versioned name and
+# as kingdom685.apk, which ks685.com's Tools > Kingdom 685 App (beta) page links to:
+#   https://github.com/685ks/ks685-app-releases/releases/latest/download/kingdom685.apk
+# `url` is the short-lived download link of the "kingdom685-release-apk" artifact made by
+# 685ks/ks685-app's "Stage release APK" workflow. Only an APK signed with the release key
+# (the fingerprint below, the same one ks685.com trusts for sign-in) is published.
+name: Publish APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag, e.g. v1.0.5
+        required: true
+      url:
+        description: Artifact download link (expires after a few minutes)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_CERT_SHA256: 89:54:EA:A5:F3:FB:BA:76:D2:EC:73:DE:64:E3:22:E5:8C:86:8D:B9:AA:AA:8F:B6:73:4A:1C:AC:39:60:D1:0E
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and unpack
+        env:
+          TAG: ${{ inputs.tag }}
+          URL: ${{ inputs.url }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag must look like v1.2.3"; exit 1; }
+          [[ "$URL" == https://* ]] || { echo "::error::Not an https link"; exit 1; }
+          curl -fsSL --max-filesize 30000000 -o apk.zip "$URL"
+          unzip -o apk.zip
+          name="kingdom685-${TAG#v}.apk"
+          [ -f "$name" ] || { echo "::error::$name isn't in the artifact"; ls -la; exit 1; }
+          echo "APK=$name" >> "$GITHUB_ENV"
+      - name: Check the release signature
+        run: |
+          apksigner="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner"
+          out=$("$apksigner" verify --print-certs "$APK" 2>&1) || { echo "$out"; echo "::error::apksigner could not verify the APK"; exit 1; }
+          expected=$(echo "$RELEASE_CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')
+          echo "$out" | grep -Ei 'certificate SHA-256 digest' | tr -d ' :' | grep -qi "$expected" \
+            || { echo "$out"; echo "::error::Not signed with the Kingdom 685 release key"; exit 1; }
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          cp "$APK" kingdom685.apk
+          name="${TAG#v}"
+          sha=$(sha256sum "$APK" | cut -d' ' -f1)
+          notes="Kingdom 685 app $name (beta). Signed release build.
+
+          Install: open the .apk on your Android phone and allow installs from your browser when asked.
+          Feedback: the Beta feedback box in the app (Backpack), or Suggest on ks685.com.
+
+          SHA-256: $sha"
+          notes=$(printf '%s\n' "$notes" | sed 's/^          //')
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" kingdom685.apk --clobber
+            gh release edit "$TAG" --latest --notes "$notes"
+          else
+            gh release create "$TAG" "$APK" kingdom685.apk --target "$GITHUB_SHA" --latest \
+              --title "Kingdom 685 $name (beta)" --notes "$notes"
+          fi
