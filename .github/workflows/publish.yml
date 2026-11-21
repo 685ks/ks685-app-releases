@@ -1,5 +1,6 @@
-# Publishes a signed Kingdom 685 APK as this repo's latest Release, under its versioned name and
-# as kingdom685.apk, which ks685.com's Tools > Kingdom 685 App (beta) page links to:
+# Publishes a signed Kingdom 685 APK as this repo's latest Release, as its one file kingdom685.apk.
+# One APK per release keeps Obtainium (README.md) from asking which file to install. ks685.com's
+# Tools > Kingdom 685 App (beta) page links to:
 #   https://github.com/685ks/ks685-app-releases/releases/latest/download/kingdom685.apk
 # `url` is the short-lived download link of the "kingdom685-release-apk" artifact made by
 # 685ks/ks685-app's "Stage release APK" workflow. Only an APK signed with the release key
@@ -56,15 +57,15 @@ jobs:
           sha=$(sha256sum "$APK" | cut -d' ' -f1)
           notes="Kingdom 685 app $name (beta). Signed release build.
 
-          Install: open the .apk on your Android phone and allow installs from your browser when asked.
+          Install: with Obtainium for automatic updates (see the README), or open kingdom685.apk on your Android phone and allow installs from your browser when asked.
           Feedback: the Beta feedback box in the app (Backpack), or Suggest on ks685.com.
 
           SHA-256: $sha"
           notes=$(printf '%s\n' "$notes" | sed 's/^          //')
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK" kingdom685.apk --clobber
+            gh release upload "$TAG" kingdom685.apk --clobber
             gh release edit "$TAG" --latest --notes "$notes"
           else
-            gh release create "$TAG" "$APK" kingdom685.apk --target "$GITHUB_SHA" --latest \
+            gh release create "$TAG" kingdom685.apk --target "$GITHUB_SHA" --latest \
               --title "Kingdom 685 $name (beta)" --notes "$notes"
           fi
